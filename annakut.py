@@ -195,7 +195,7 @@ if (!p.__annakutBound) {
       if (b) b.click();
     }
     var a = t.closest('a[href^="tel:"]');
-    if (a) { e.preventDefault(); window.location.href = a.getAttribute('href'); }
+    if (a) { e.preventDefault(); window.top.location.href = a.getAttribute('href'); }
   }, true);`;
   d.head.appendChild(s);
 }
@@ -362,7 +362,7 @@ def row_html(idx, row):
 
     if page == "MASTER":
         raw = html.escape(str(row["Contact"]).strip())
-        call = f'<a class="num" href="tel:{num}">{raw}</a>' if num else f'<span class="num">{raw}</span>'
+        call = f'<a class="num" href="tel:{num}" target="_top">{raw}</a>' if num else f'<span class="num">{raw}</span>'
         return (f'<div class="guest-row master" style="background:{bg}">'
                 f'<div class="row-top"><div class="guest-sr">{sr}</div><div class="guest-name">{name}</div></div>'
                 f'<div class="row-bottom">{call}<div class="status-badge" data-idx="{idx}">{status}</div></div></div>')
@@ -371,9 +371,8 @@ def row_html(idx, row):
     inner = (f'<div class="guest-row" style="background:{bg}"><div class="guest-sr">{sr}</div>'
              f'<div class="guest-name">{name}</div><div class="guest-status">{label}</div></div>')
     if num:
-        return f'<a class="guest-link" href="tel:{num}" data-idx="{idx}">{inner}</a>'
+        return f'<a class="guest-link" href="tel:{num}" target="_top" data-idx="{idx}">{inner}</a>'
     return inner
-
 
 if len(view):
     st.markdown("".join(row_html(i, r) for i, r in view.iterrows()) + '<div class="list-end"></div>',
