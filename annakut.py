@@ -233,7 +233,7 @@ def tel_number(raw):
     return digits
 
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=15)
 def load_guests():
     # Connect to Google Sheets using your hidden secrets.toml
     conn = st.connection("gsheets", type=GSheetsConnection)
