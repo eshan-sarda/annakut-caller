@@ -174,6 +174,20 @@ div[role="dialog"] {width: calc(100vw - 16px) !important; max-width: calc(100vw 
 .st-key-res_coming button {background: #d4edda !important;}
 .st-key-res_not button {background: #f8d7da !important;}
 .st-key-res_didnt button {background: #fff3cd !important;}
+
+/* Force PIN and Search inputs to pure white (Kill Dark Mode) */
+[data-baseweb="input"], [data-baseweb="base-input"], div[data-testid="stTextInput"] div {
+    background-color: #ffffff !important;
+    border-color: #e5e5ea !important;
+}
+input[type="text"], input[type="password"] {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    background-color: #ffffff !important;
+    caret-color: #000000 !important;
+}
+
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -233,7 +247,7 @@ def tel_number(raw):
     return digits
 
 
-@st.cache_data(ttl=15)
+@st.cache_data(ttl=5)
 def load_guests():
     # Connect to Google Sheets using your hidden secrets.toml
     conn = st.connection("gsheets", type=GSheetsConnection)
@@ -369,6 +383,7 @@ def row_html(idx, row):
     bg = STATUS_BG[status]
     num = tel_number(row["Contact"])
 
+    # 1. Master Page Logic (Returns instantly, ignores the code below)
     if page == "MASTER":
         raw = html.escape(str(row["Contact"]).strip())
         call = f'<a class="num" href="tel:{num}">{raw}</a>' if num else f'<span class="num">{raw}</span>'
@@ -376,9 +391,15 @@ def row_html(idx, row):
                 f'<div class="row-top"><div class="guest-sr">{sr}</div><div class="guest-name">{name}</div></div>'
                 f'<div class="row-bottom">{call}<div class="status-badge" data-idx="{idx}">{status}</div></div></div>')
 
-    label = "call pending" if status == "PENDING" else "didnt pick up"
+    # 2. Pending and Callback Logic 
+    if page == "CALLBACK":
+        label = "call aaya?"
+    else:
+        label = "call pending" if status == "PENDING" else "didnt pick up"
+        
     inner = (f'<div class="guest-row" style="background:{bg}"><div class="guest-sr">{sr}</div>'
              f'<div class="guest-name">{name}</div><div class="guest-status">{label}</div></div>')
+             
     if num:
         return f'<a class="guest-link" href="tel:{num}" data-idx="{idx}">{inner}</a>'
     return inner
