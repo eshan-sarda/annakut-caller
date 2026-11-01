@@ -9,6 +9,29 @@ from st_keyup import st_keyup
 
 st.set_page_config(page_title="Annakut", layout="centered", initial_sidebar_state="collapsed")
 
+# ---------------------------------------------------------------- early white lock (runs BEFORE the PIN screen)
+EARLY_CSS = """
+<style>
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="stHeader"] {
+    background-color: #ffffff !important;
+    color-scheme: light !important;
+}
+iframe {color-scheme: light !important; background-color: #ffffff !important;}
+[data-baseweb="input"], [data-baseweb="base-input"], div[data-testid="stTextInput"] div {
+    background-color: #ffffff !important;
+    border-color: #e5e5ea !important;
+}
+input[type="text"], input[type="password"] {
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
+    background-color: #ffffff !important;
+    caret-color: #000000 !important;
+}
+.stButton button {background-color: #ffffff; color: #000000; border: 1px solid #e5e5ea;}
+</style>
+"""
+st.markdown(EARLY_CSS, unsafe_allow_html=True)
+
 # ---------------------------------------------------------------- security lock
 if "authenticated" not in st.session_state:
     # Check if the URL has our secret persistent token
@@ -64,6 +87,7 @@ html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
 
 /* hidden helpers */
 [class*="st-key-pick_"] {display: none !important;}
+[class*="st-key-pickin_"] {display: none !important;}
 .st-key-injector {height: 0 !important; overflow: hidden; position: absolute;}
 
 /* nav + filter bars: always one row, never stacked */
@@ -162,6 +186,25 @@ a.num, span.num {font-size: 15px; color: #007aff !important; text-decoration: no
             font-size: 14px; font-weight: 700; text-decoration: none !important;
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;}
 
+/* call-back rows: big main area + rigid side button */
+.guest-row.cb-row {padding: 0; align-items: stretch;}
+.cb-main {
+    flex: 1 1 auto; min-width: 0; padding: 14px 12px 14px 16px;
+    display: flex; flex-direction: column; justify-content: center;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.06);
+}
+.cb-top {display: flex; align-items: center; width: 100%;}
+.cb-prompt {margin-top: 2px; padding-left: 36px; font-size: 13px; font-weight: 400;
+            line-height: 1.1; color: #8e8e93;}
+a.cb-side, a.cb-side:visited, a.cb-side:hover, div.cb-side {
+    flex: 0 0 100px; display: flex; align-items: center; justify-content: center;
+    padding: 0 8px; text-align: center; font-size: 13px; font-weight: 700; line-height: 1.2;
+    color: #000000 !important; text-decoration: none !important;
+    background-color: rgba(0, 0, 0, 0.08); border-left: 2px solid #000000;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.15);
+}
+div.cb-side {color: #8e8e93 !important;}
+
 /* modal */
 div[role="dialog"] {width: calc(100vw - 16px) !important; max-width: calc(100vw - 16px) !important;}
 .st-key-abort_call {display: flex; justify-content: flex-end;}
@@ -203,6 +246,7 @@ if (!p.__annakutBound) {
   s.textContent = `document.addEventListener('click', function(e){
     var telLink = e.target.closest('a[href^="tel:"]');
     var badge = e.target.closest('.status-badge');
+    var cbMain = e.target.closest('.cb-main');
     
     if (telLink) {
       var idx = telLink.getAttribute('data-idx');
@@ -216,6 +260,13 @@ if (!p.__annakutBound) {
       var idx = badge.getAttribute('data-idx');
       if (idx !== null) {
         var b = document.querySelector('.st-key-pick_' + idx + ' button');
+        if (b) b.click();
+      }
+    }
+    else if (cbMain) {
+      var idx = cbMain.getAttribute('data-idx');
+      if (idx !== null) {
+        var b = document.querySelector('.st-key-pickin_' + idx + ' button');
         if (b) b.click();
       }
     }
@@ -281,6 +332,9 @@ if "filter" not in ss:
 if "active_call_index" not in ss:
     raw = st.query_params.get("call")
     ss.active_call_index = int(raw) if raw and raw.isdigit() and int(raw) in df.index else None
+if "call_mode" not in ss:
+    saved_mode = st.query_params.get("mode")
+    ss.call_mode = saved_mode if saved_mode in ("inbound", "outbound") else "outbound"
 
 
 # ---------------------------------------------------------------- callbacks
@@ -292,20 +346,25 @@ def set_filter(f):
     ss.filter = f
 
 
-def set_active(idx):
+def set_active(idx, mode="outbound"):
     ss.active_call_index = idx
+    ss.call_mode = mode
     st.query_params["call"] = str(idx)
+    st.query_params["mode"] = mode
 
 
 def close_call():
     ss.active_call_index = None
+    ss.call_mode = "outbound"
     if "call" in st.query_params:
         del st.query_params["call"]
+    if "mode" in st.query_params:
+        del st.query_params["mode"]
 
 
 # ---------------------------------------------------------------- modal
 @st.dialog("Log Call", dismissible=False)
-def call_dialog(idx):
+def call_dialog(idx, mode="outbound"):
     if st.button("\u2715", key="abort_call"):
         close_call()
         st.rerun()
@@ -313,7 +372,12 @@ def call_dialog(idx):
     name = html.escape(df.at[idx, "Name"].upper())
     st.markdown(f'<div class="dlg-head">{name} is</div>', unsafe_allow_html=True)
     
-    for label, key in (("COMING", "res_coming"), ("NOT COMING", "res_not"), ("DIDNT PICK UP", "res_didnt")):
+    options = (("COMING", "res_coming"), ("NOT COMING", "res_not"), ("DIDNT PICK UP", "res_didnt"))
+    if mode == "inbound":
+        # Guest called back: "DIDNT PICK UP" makes no sense here
+        options = tuple(o for o in options if o[0] != "DIDNT PICK UP")
+    
+    for label, key in options:
         if st.button(label, key=key, use_container_width=True):
             
             # 1. Update the app's local memory
@@ -391,6 +455,17 @@ def row_html(idx, row):
                 f'<div class="row-top"><div class="guest-sr">{sr}</div><div class="guest-name">{name}</div></div>'
                 f'<div class="row-bottom">{call}<div class="status-badge" data-idx="{idx}">{status}</div></div></div>')
 
+    # 1b. Call-back Page Logic: main area (inbound) + rigid side button (outbound dial)
+    if page == "CALLBACK":
+        main = (f'<div class="cb-main" data-idx="{idx}">'
+                f'<div class="cb-top"><div class="guest-sr">{sr}</div><div class="guest-name">{name}</div></div>'
+                f'<div class="cb-prompt">call aaya?</div></div>')
+        if num:
+            side = f'<a class="cb-side" href="tel:{num}" data-idx="{idx}">CALL - AGAIN</a>'
+        else:
+            side = '<div class="cb-side">CALL - AGAIN</div>'
+        return f'<div class="guest-row cb-row" style="background:{bg}">{main}{side}</div>'
+
     # 2. Pending and Callback Logic 
     if page == "CALLBACK":
         label = "call aaya?"
@@ -409,6 +484,8 @@ if len(view):
                 unsafe_allow_html=True)
     for i in view.index:  # hidden buttons that the tap helper presses
         st.button("pick", key=f"pick_{i}", on_click=set_active, args=(i,))
+        if page == "CALLBACK":
+            st.button("pickin", key=f"pickin_{i}", on_click=set_active, args=(i, "inbound"))
 else:
     st.markdown('<div class="no-results">No results</div>', unsafe_allow_html=True)
 
@@ -418,4 +495,4 @@ if page == "MASTER":
 
 # ---------------------------------------------------------------- lock
 if ss.active_call_index is not None:
-    call_dialog(ss.active_call_index)
+    call_dialog(ss.active_call_index, ss.call_mode)
